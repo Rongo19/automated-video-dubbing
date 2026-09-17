@@ -2,7 +2,7 @@ from src.video_merger import merge_dubbed_audio
 
 
 video_path = (
-    "temp/Everyday Conversation in Slow French 🦥.mp4"
+    "temp\30 minutes French Listening Practice , REAL French conversation 🇫🇷 [EN⧸FR SUBTITLES] #14.mp4"
 )
 
 dubbed_audio_path = "temp/dubbed_audio.wav"

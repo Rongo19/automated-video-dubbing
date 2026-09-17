@@ -1,7 +1,6 @@
 from pathlib import Path
 import asyncio
 import edge_tts
-import subprocess
 
 
 VOICE = "en-US-AriaNeural"
@@ -25,25 +24,50 @@ def generate_segment_audio(translated_segments):
     Generate TTS audio for every translated segment.
     """
 
-    print("\n[STEP 5] Generating English speech for segments...")
+    print("→ Loading English TTS voice...")
+    print(f"→ Voice: {VOICE}")
 
     output_dir = Path("temp/tts_segments")
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     generated_segments = []
 
-    for i, segment in enumerate(translated_segments, start=1):
+    total_segments = len(translated_segments)
+
+    print(
+        f"→ Generating speech for "
+        f"{total_segments} segments..."
+    )
+
+    for i, segment in enumerate(
+        translated_segments,
+        start=1
+    ):
 
         text = segment["translated_text"]
 
         if not text.strip():
+            print(
+                f"⚠ Skipping empty segment "
+                f"{i}/{total_segments}"
+            )
             continue
 
-        output_file = output_dir / f"segment_{i}.mp3"
+        output_file = (
+            output_dir / f"segment_{i}.mp3"
+        )
 
-        print(f"\nSegment {i}")
-        print(f"Text: {text}")
-        print(f"Output: {output_file}")
+        print(
+            f"\n→ Generating segment "
+            f"{i}/{total_segments}"
+        )
+
+        print(
+            f"  Text: {text}"
+        )
 
         asyncio.run(
             generate_speech(
@@ -59,9 +83,17 @@ def generate_segment_audio(translated_segments):
             "audio": str(output_file)
         })
 
-        print("✓ Generated")
+        print(
+            f"  ✓ Saved: {output_file}"
+        )
 
-    print("\n✓ All TTS segments generated!")
-    print(f"✓ Segments: {len(generated_segments)}")
+    print(
+        f"\n✓ English speech generation completed"
+    )
+
+    print(
+        f"✓ Generated segments: "
+        f"{len(generated_segments)}/{total_segments}"
+    )
 
     return generated_segments

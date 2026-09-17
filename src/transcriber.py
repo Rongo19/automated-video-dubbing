@@ -3,14 +3,11 @@ from faster_whisper import WhisperModel
 
 def transcribe_audio(audio_path: str):
     """
-    Transcribe audio using Faster-Whisper.
-    Returns detected language and timestamped segments.
+    Transcribe audio using Faster-Whisper Base.
     """
 
-    print("\n[STEP 3] Loading Whisper model...")
+    print("→ Loading Whisper Base model...")
 
-    # Start with the small model.
-    # It gives a good balance between speed and accuracy.
     model = WhisperModel(
         "base",
         device="cpu",
@@ -18,7 +15,9 @@ def transcribe_audio(audio_path: str):
     )
 
     print("✓ Whisper model loaded")
-    print("\nTranscribing audio...")
+    print("→ Analyzing speech...")
+    print("→ Detecting language...")
+    print("→ Transcribing speech...\n")
 
     segments, info = model.transcribe(
         audio_path,
@@ -29,27 +28,45 @@ def transcribe_audio(audio_path: str):
     detected_language = info.language
     language_probability = info.language_probability
 
-    print(f"\n✓ Detected language: {detected_language}")
-    print(f"✓ Language probability: {language_probability:.2f}")
+    print(
+        f"✓ Language: {detected_language}"
+    )
+
+    print(
+        f"✓ Confidence: "
+        f"{language_probability * 100:.1f}%"
+    )
 
     results = []
 
     for segment in segments:
+
         text = segment.text.strip()
 
-        if text:
-            results.append({
-                "start": segment.start,
-                "end": segment.end,
-                "text": text
-            })
+        if not text:
+            continue
 
-            print(
-                f"[{segment.start:.2f}s -> {segment.end:.2f}s] "
-                f"{text}"
-            )
+        results.append({
+            "start": segment.start,
+            "end": segment.end,
+            "text": text
+        })
 
-    print(f"\n✓ Transcription completed!")
-    print(f"✓ Segments detected: {len(results)}")
+        print(
+            f"[{segment.start:.2f}s → "
+            f"{segment.end:.2f}s] {text}"
+        )
 
-    return detected_language, results
+    print(
+        f"\n✓ Transcription completed"
+    )
+
+    print(
+        f"✓ Segments detected: "
+        f"{len(results)}"
+    )
+
+    return (
+        detected_language,
+        results
+    )

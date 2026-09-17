@@ -123,7 +123,10 @@ def translate_segments(segments, source_language):
 
         original_text = segment["text"]
 
-        print(f"\nSegment {i}")
+        print(
+        f"\n→ Translating segment "
+        f"{i}/{len(segments)}..."
+        )
         print(f"Original: {original_text}")
 
         try:
@@ -131,7 +134,6 @@ def translate_segments(segments, source_language):
                 original_text,
                 source_language
             )
-
             print(f"English : {english_text}")
 
             translated_segments.append({

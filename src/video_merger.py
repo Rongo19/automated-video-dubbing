@@ -5,71 +5,59 @@ import subprocess
 def merge_dubbed_audio(
     video_path: str,
     dubbed_audio_path: str,
-    output_path: str = "output/dubbed_video.mp4"
+    output_path: str
 ):
     """
-    Replace the original video's audio with the
-    synchronized English dubbed audio.
-
-    Video is copied without re-encoding.
+    Replace original audio with dubbed audio
+    while copying the original video stream.
     """
 
-    print("\n[STEP 7] Creating final dubbed video...")
-
+    print("→ Loading original video...")
+    print("→ Removing original audio...")
+    print("→ Adding English dubbed audio...")
+    print("→ Copying original video stream...")
+    
     video = Path(video_path)
     audio = Path(dubbed_audio_path)
     output = Path(output_path)
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    if not video.exists():
-        raise FileNotFoundError(
-            f"Video not found: {video}"
-        )
-
-    if not audio.exists():
-        raise FileNotFoundError(
-            f"Dubbed audio not found: {audio}"
-        )
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     command = [
         "ffmpeg",
         "-y",
 
-        # Original video
         "-i",
         str(video),
 
-        # English dubbed audio
         "-i",
         str(audio),
 
-        # Copy video without re-encoding
         "-map",
         "0:v:0",
 
-        # Use new audio
         "-map",
         "1:a:0",
 
         "-c:v",
         "copy",
 
-        # Encode WAV → AAC
         "-c:a",
         "aac",
+
         "-b:a",
         "192k",
 
-        # Match shortest stream
         "-shortest",
 
         str(output)
     ]
 
-    print("\nMerging video + English audio...")
-
     try:
+
         subprocess.run(
             command,
             check=True,
@@ -79,11 +67,17 @@ def merge_dubbed_audio(
         )
 
     except subprocess.CalledProcessError as e:
-        print("\n❌ FFmpeg failed while creating the final video.")
+
+        print(
+            "❌ FFmpeg video merge failed."
+        )
+
         print(e.stderr)
+
         raise
 
-    print("\n✓ Final video created!")
-    print(f"✓ Output: {output}")
+    print("✓ Video stream preserved")
+    print("✓ English audio added")
+    print("✓ Final video created")
 
     return str(output)
