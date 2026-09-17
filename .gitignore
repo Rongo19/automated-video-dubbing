@@ -1,0 +1,38 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Downloaded/generated media
+temp/*
+output/*
+
+# Keep directory structure
+!temp/.gitkeep
+!output/.gitkeep
+
+# Model/cache directories
+.cache/
+huggingface/
+models/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

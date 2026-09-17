@@ -1,0 +1,12 @@
+yt-dlp
+faster-whisper
+torch
+torchaudio
+transformers
+sentencepiece
+edge-tts
+
+
+# FFmpeg
+
+# FFmpeg must be installed separately and available on the system PATH.
