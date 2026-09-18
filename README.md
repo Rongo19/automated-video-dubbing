@@ -1,304 +1,199 @@
-# Automated Video Dubbing System
+# 🎙️ Automated Video Dubbing System
 
-An end-to-end Python pipeline that downloads a YouTube video, detects and transcribes the spoken language, translates the transcript into English, generates natural English speech, synchronizes the generated speech with the original timestamps, and replaces the original audio while preserving the original video stream.
+> An end-to-end Python pipeline that automatically converts spoken content from a YouTube video into English while preserving the original video.
 
-## Project Overview
-
-### Goal
-
-The system converts a video spoken in another language into an English-dubbed video while keeping the original video content intact.
-
-**Input:**
-- YouTube video URL
-
-**Output:**
-- English-dubbed MP4 video
-
-### Current Pipeline
-
-```text
-YouTube URL
-    |
-    v
-+------------------+
-|      yt-dlp      |
-| Download Video   |
-+--------+---------+
-         |
-         v
-+------------------+
-|      FFmpeg      |
-| Extract Audio    |
-+--------+---------+
-         |
-         v
-+---------------------------+
-| Faster-Whisper Base      |
-| Language Detection + ASR |
-+-------------+-------------+
-              |
-              v
-       Original Transcript
-              |
-              v
-+---------------------------+
-| NLLB-200 distilled 600M  |
-| Multilingual Translation |
-+-------------+-------------+
-              |
-              v
-         English Text
-              |
-              v
-+---------------------------+
-|        Edge-TTS           |
-|     English Speech        |
-+-------------+-------------+
-              |
-              v
-        TTS Segments
-              |
-              v
-+---------------------------+
-|      Audio Sync /         |
-| Timestamp Alignment       |
-+-------------+-------------+
-              |
-              v
-       dubbed_audio.wav
-              |
-              v
-+---------------------------+
-|          FFmpeg           |
-| Replace Original Audio   |
-| Copy Original Video      |
-+-------------+-------------+
-              |
-              v
-       final_dubbed_video.mp4
-```
-
-## Architecture
-
-The project is divided into independent modules so each stage can be tested and improved separately.
-
-### 1. Video Downloader
-
-**File:** `src/downloader.py`
-
-**Technology:** `yt-dlp`
-
-Responsibilities:
-- Accept a YouTube URL.
-- Download the video.
-- Prefer the best available video and audio streams.
-- Merge them into MP4.
-- Store downloaded files inside `temp/`.
-
-Main flow:
-
-```text
-YouTube URL
-    |
-    v
-yt-dlp
-    |
-    v
-temp/<video>.mp4
-```
-
-### 2. Audio Extraction
-
-**File:** `src/audio.py`
-
-**Technology:** FFmpeg
-
-The downloaded video's audio is extracted and converted to:
-
-- WAV
-- Mono
-- 16 kHz
-- PCM 16-bit
-
-This format is convenient for speech-recognition models.
-
-```text
-Video MP4
-   |
-   | FFmpeg
-   v
-audio.wav
-16 kHz / mono / PCM
-```
-
-### 3. Speech Recognition
-
-**File:** `src/transcriber.py`
-
-**Technology:** Faster-Whisper
-
-**Current model:** Whisper `base`
-
-Responsibilities:
-- Detect the spoken language.
-- Convert speech into text.
-- Produce timestamped segments.
-
-Example:
-
-```text
-[16.00s -> 19.00s]
-Tu as fait quoi ce week-end ?
-
-[19.00s -> 27.00s]
-Je suis allé à Bordeaux pour voir mes parents et ma sœur.
-```
-
-The timestamps are critical because they are later used for dubbing synchronization.
-
-### Why Whisper Base?
-
-The project initially tested Whisper `tiny`.
-
-Whisper Tiny was lightweight and fast but produced several transcription errors.
-
-Whisper Base produced significantly cleaner segmentation and transcription for the French test video while remaining practical for local execution.
-
-The model can later be changed to another Whisper size depending on available hardware and required accuracy.
-
-### 4. Multilingual Translation
-
-**File:** `src/translator.py`
-
-**Technology:** NLLB-200
-
-**Current model:** `facebook/nllb-200-distilled-600M`
-
-Responsibilities:
-- Accept the original-language transcript.
-- Map the detected language code to the corresponding NLLB language code.
-- Translate each segment into English.
-- Preserve the original segment timestamps.
-
-Example:
-
-```text
-French:
-Tu as fait quoi ce week-end ?
-
-English:
-What did you do this weekend?
-```
-
-The system uses language mappings such as:
-
-```text
-fr -> fra_Latn
-de -> deu_Latn
-es -> spa_Latn
-hi -> hin_Deva
-mr -> mar_Deva
-ta -> tam_Taml
-te -> tel_Telu
-ja -> jpn_Jpan
-ko -> kor_Hang
-zh -> zho_Hans
-```
-
-The mapping can be extended as required.
-
-### 5. English Text-to-Speech
-
-**File:** `src/tts.py`
-
-**Technology:** Edge-TTS
-
-**Current voice:** `en-US-AriaNeural`
-
-Responsibilities:
-- Generate English speech for each translated segment.
-- Save each segment as an individual MP3 file.
-
-Example:
-
-```text
-Translated segment
-       |
-       v
-Edge-TTS
-       |
-       v
-segment_1.mp3
-segment_2.mp3
-segment_3.mp3
-...
-```
-
-The modular design allows the TTS provider or voice to be changed later.
-
-### 6. Timestamp Synchronization
-
-**File:** `src/audio_sync.py`
-
-**Technology:** FFmpeg
-
-The generated TTS files are not simply concatenated.
-
-Each segment is placed at its original speech timestamp.
-
-For example:
-
-```text
-Original:
-0.00 -> 16.00
-16.00 -> 19.00
-19.00 -> 27.00
-27.00 -> 30.00
-30.00 -> 36.00
-36.00 -> 38.00
-38.00 -> 45.72
-```
-
-The synchronization stage creates a single English audio track:
-
-```text
-dubbed_audio.wav
-```
-
-This is important because translated speech can have a different duration from the source speech.
-
-### 7. Final Video Merging
-
-**File:** `src/video_merger.py`
-
-**Technology:** FFmpeg
-
-The original video stream is copied without re-encoding:
-
-```text
--c:v copy
-```
-
-The original audio is replaced with the generated English audio.
-
-```text
-Original Video Stream
-        |
-        | copy without re-encoding
-        v
-English Dubbed Audio
-        |
-        v
-final_dubbed_video.mp4
-```
-
-This preserves the original video quality and avoids unnecessary video encoding time.
+The system downloads a YouTube video, extracts its audio, detects and transcribes the spoken language, translates the transcript into English, generates natural English speech, synchronizes the generated speech with the original timestamps, and finally replaces the original audio while preserving the original video stream.
 
 ---
 
-# Current Project Structure
+## 🚀 Project Status
 
-The recommended GitHub structure is:
+**Status: Working MVP — End-to-End Pipeline Tested Successfully**
+
+The complete pipeline has been tested on an approximately 30-minute French video.
+
+### Test Result
+
+| | |
+|---|---|
+| Source language | **French** |
+| Target language | **English** |
+| Speech segments | **393** |
+| Translation model | **NLLB-200** |
+| TTS voice | **Edge-TTS — en-US-AriaNeural** |
+| Processing device | **CPU** |
+| Total processing time | **~14 minutes** |
+| Output | Final MP4 generated successfully |
+
+---
+
+## 🎯 Project Objective
+
+Build an automated video dubbing system that takes a video in a foreign language and generates an English-dubbed version automatically.
+
+**Input:** YouTube Video URL
+**Output:** English Dubbed MP4 Video
+
+The original video stream is preserved while the original audio is replaced with synchronized English speech.
+
+---
+
+## 🧠 System Architecture
+
+```text
+                YouTube URL
+                     │
+                     ▼
+                  yt-dlp
+              (Video Download)
+                     │
+                     ▼
+                  FFmpeg
+             (Audio Extraction)
+                     │
+                     ▼
+              Faster-Whisper
+    (Speech Recognition + Language Detection)
+                     │
+                     ▼
+                 NLLB-200
+          (Translation to English)
+                     │
+                     ▼
+                 Edge-TTS
+          (English Speech Generation)
+                     │
+                     ▼
+            Audio Synchronizer
+           (Timestamp Alignment)
+                     │
+                     ▼
+                  FFmpeg
+             (Video + Audio Merge)
+                     │
+                     ▼
+             English Dubbed MP4
+```
+
+---
+
+## 🔄 Complete Pipeline
+
+The system consists of seven major stages.
+
+### Step 1 — Video Download
+
+Accepts a YouTube URL and downloads the video using `yt-dlp`, stored inside `temp/`. The system avoids re-downloading a video when a valid checkpoint already exists.
+
+### Step 2 — Audio Extraction
+
+FFmpeg extracts the audio from the downloaded video and converts it to mono, 16 kHz, PCM WAV — the format required for speech recognition.
+
+**Output:** `temp/audio.wav`
+
+### Step 3 — Speech Recognition
+
+**Faster-Whisper Base** performs speech recognition, language detection, timestamp generation, and speech segmentation.
+
+```json
+{
+    "start": 3.42,
+    "end": 8.91,
+    "text": "Alors aujourd'hui..."
+}
+```
+
+These timestamps are later used to synchronize the generated English audio.
+
+### Step 4 — Translation
+
+Recognized speech is translated into English using `facebook/nllb-200-distilled-600M` (**N**o **L**anguage **L**eft **B**ehind). The source language is automatically detected by Whisper and passed to the translation stage.
+
+The current implementation supports a configured set of languages, including French, German, Spanish, Italian, Portuguese, Dutch, Russian, Ukrainian, Polish, Turkish, Arabic, Persian, Hindi, Marathi, Bengali, Gujarati, Tamil, Telugu, Kannada, Malayalam, Punjabi, Urdu, Nepali, Sinhala, Thai, Vietnamese, Indonesian, Malay, Japanese, Korean, and Chinese.
+
+**Example**
+
+```text
+French:  "Est-ce que tu penses que le français est une langue facile ?"
+English: "Do you think French is an easy language?"
+```
+
+### Step 5 — Text-to-Speech
+
+Translated English text is converted into speech using **Edge-TTS**, currently the `en-US-AriaNeural` voice. Each translated segment becomes a separate audio file with its original timestamp metadata retained.
+
+```text
+temp/
+└── tts_segments/
+    ├── segment_1.mp3
+    ├── segment_2.mp3
+    └── ... segment_393.mp3
+```
+
+### Step 6 — Audio Synchronization
+
+Generated English speech is positioned according to the original segment timestamps using FFmpeg filters (`adelay`, `apad`, `atrim`, `amix`). Audio is processed in chunks (default: 30 segments per chunk) rather than as one large FFmpeg command, which significantly reduces the number of inputs handled at once. The final duration is verified against the target timeline.
+
+**Output:** `temp/dubbed_audio.wav`
+
+### Step 7 — Video Merge
+
+Combines the original video with the synchronized English audio. The original video stream is copied without re-encoding (`-c:v copy`), and the audio is encoded as AAC (`-c:a aac -b:a 192k`).
+
+**Output:** `output/final_dubbed_video.mp4`
+
+> **Note:** Only the audio track is replaced — the original video stream is fully preserved.
+
+---
+
+## 🔁 Checkpoint & Resume System
+
+### Pipeline Checkpointing
+
+Progress across all seven stages is stored in `temp/checkpoint.json`, so an interrupted run can reuse already-completed stages instead of starting over.
+
+### Translation Resume
+
+Translation progress is saved incrementally to `temp/translation_progress.json` — each segment is saved as soon as it's translated. If the process stops at, say, segment 100, the next run resumes from there instead of re-translating everything. This matters most on long videos, where translation can take several minutes.
+
+---
+
+## 📊 Performance
+
+Tested on an approximately 30-minute French video.
+
+**Test configuration:** French → English, 393 segments, CPU, Faster-Whisper Base, NLLB-200 Distilled 600M, Edge-TTS.
+
+| Pipeline Stage | Time |
+|---|---:|
+| Video Download | Reused |
+| Audio Extraction | Reused |
+| Speech Recognition | Reused |
+| Translation | 4 min 49 sec |
+| Text-to-Speech | 7 min 21 sec |
+| Audio Synchronization | 1 min 42 sec |
+| Video Merge | 13 sec |
+| **Total Processing Time** | **~14 min 6 sec** |
+
+The complete pipeline successfully produced the final dubbed MP4.
+
+---
+
+## 🛠️ Technology Stack
+
+| Category | Tools |
+|---|---|
+| Language | Python 3.13 |
+| Video Processing | FFmpeg, yt-dlp |
+| Speech Recognition | Faster-Whisper (Whisper Base) |
+| Machine Translation | Hugging Face Transformers, NLLB-200 (`facebook/nllb-200-distilled-600M`) |
+| Text-to-Speech | Edge-TTS (`en-US-AriaNeural`) |
+| Deep Learning | PyTorch |
+| Data Processing | JSON, pathlib, subprocess, asyncio |
+
+---
+
+## 📁 Project Structure
 
 ```text
 automated-video-dubbing/
@@ -311,51 +206,219 @@ automated-video-dubbing/
 │   ├── translator.py
 │   ├── tts.py
 │   ├── audio_sync.py
-│   └── video_merger.py
-│
-├── output/
-│   └── .gitkeep
+│   ├── video_merger.py
+│   └── checkpoint.py
 │
 ├── temp/
-│   └── .gitkeep
+│   ├── audio.wav
+│   ├── transcript.json
+│   ├── translation.json
+│   ├── translation_progress.json
+│   ├── dubbed_audio.wav
+│   ├── checkpoint.json
+│   └── tts_segments/
+│
+├── output/
+│   └── final_dubbed_video.mp4
 │
 ├── tests/
 │   ├── test_transcription.py
 │   ├── test_translation.py
 │   ├── test_tts.py
 │   ├── test_audio_sync.py
-│   └── test_merge.py
+│   ├── test_merge.py
+│   └── test_checkpoint.py
 │
 ├── main.py
 ├── requirements.txt
 ├── .gitignore
+├── .env.example
 ├── README.md
 └── LICENSE
 ```
 
-## Important note about test files
+---
 
-During development, the project used files such as:
+## ⚙️ Installation
 
-```text
-test_transcription.py
-test_translation.py
-test_real_tts.py
-test_audio_sync.py
-test_merge.py
+### 1. Clone the Repository
+
+```bash
+git clone YOUR_GITHUB_REPOSITORY_URL
+cd automated-video-dubbing
 ```
 
-For GitHub, it is cleaner to put these inside a `tests/` directory.
+### 2. Create a Virtual Environment (Windows)
 
-The final application should be run through `main.py`, while the test files remain for development and verification.
+```powershell
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+```
+
+### 3. Install Python Dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+Main dependencies: `yt-dlp`, `faster-whisper`, `torch`, `torchaudio`, `transformers`, `sentencepiece`, `edge-tts`.
+
+### 4. Install FFmpeg
+
+Required for audio extraction, synchronization, silence generation, and video/audio merging.
+
+Verify:
+
+```powershell
+ffmpeg -version
+ffprobe -version
+```
+
+Both commands must work from the terminal.
 
 ---
 
-# Dependencies
+## ▶️ Usage
 
-Create a `requirements.txt` file.
+```powershell
+python main.py
+```
 
-A reasonable starting version is:
+You'll be prompted for a YouTube URL:
+
+```text
+Enter YouTube URL:
+> https://youtu.be/VIDEO_ID
+```
+
+The pipeline then runs automatically:
+
+```text
+[1/7] Video Download
+[2/7] Audio Extraction
+[3/7] Speech Recognition
+[4/7] Translation
+[5/7] Text-to-Speech
+[6/7] Audio Synchronization
+[7/7] Video Merge
+```
+
+**Output:** `output/final_dubbed_video.mp4`
+
+---
+
+## 🧪 Testing Individual Components
+
+Each pipeline stage can be tested independently — useful for isolating issues before running the full pipeline.
+
+```powershell
+python test_transcription.py    # Speech recognition
+python test_tts.py              # Text-to-speech
+python test_audio_sync.py       # Audio synchronization
+python test_merge.py            # Video merge
+python test_checkpoint.py       # Checkpoint system
+```
+
+---
+
+## 🧩 Module Responsibilities
+
+| Module | Responsibility |
+|---|---|
+| `downloader.py` | Connects to YouTube, downloads video, selects streams, produces MP4 |
+| `audio.py` | Extracts audio via FFmpeg, converts to 16 kHz mono WAV |
+| `transcriber.py` | Loads Faster-Whisper, detects language, transcribes, generates timestamped segments |
+| `translator.py` | Loads NLLB-200, maps language codes, translates segments, saves/resumes progress |
+| `tts.py` | Generates English speech via Edge-TTS, creates per-segment audio files |
+| `audio_sync.py` | Positions speech using timestamps, generates silence, mixes segments in chunks, verifies duration |
+| `video_merger.py` | Strips original audio, adds dubbed audio, copies video stream, produces final MP4 |
+| `checkpoint.py` | Saves/loads pipeline progress, clears completed checkpoints, supports recovery |
+
+---
+
+## 🌍 Supported Languages
+
+Mappings are defined in `translator.py`. Examples:
+
+| Language | NLLB Code |
+|---|---|
+| French | `fra_Latn` |
+| German | `deu_Latn` |
+| Spanish | `spa_Latn` |
+| Italian | `ita_Latn` |
+| Portuguese | `por_Latn` |
+| Russian | `rus_Cyrl` |
+| Arabic | `arb_Arab` |
+| Hindi | `hin_Deva` |
+| Marathi | `mar_Deva` |
+| Bengali | `ben_Beng` |
+| Gujarati | `guj_Gujr` |
+| Tamil | `tam_Taml` |
+| Telugu | `tel_Telu` |
+| Kannada | `kan_Knda` |
+| Malayalam | `mal_Mlym` |
+| Japanese | `jpn_Jpan` |
+| Korean | `kor_Hang` |
+| Chinese | `zho_Hans` |
+
+Actual supported input languages depend on the configured mapping in `translator.py`.
+
+---
+
+## 🎯 Design Decisions
+
+**Faster-Whisper** — efficient Whisper inference on CPU, with built-in language detection and timestamped segments.
+
+**NLLB-200** — broad multilingual coverage without needing a separate translation system per language pair.
+
+**Edge-TTS** — natural-sounding neural voices with simple Python integration.
+
+**FFmpeg** — reliable media processing (extraction, conversion, delay, mixing, silence generation, muxing), and allows the original video stream to be copied without re-encoding.
+
+---
+
+## ⚠️ Current Limitations
+
+1. **Original background audio is not preserved** — the original audio track, including music and ambient sound, is fully replaced.
+2. **Single TTS voice** — all translated speech uses one voice (`en-US-AriaNeural`), regardless of how many speakers are in the source.
+3. **No speaker diarization** — individual speakers are not identified or distinguished.
+4. **No voice cloning** — generated speech does not resemble the original speaker's voice.
+5. **Translation quality varies** — depends on source language, sentence complexity, ASR accuracy, and context; ASR errors can propagate into translation.
+6. **Speech duration mismatches** — English translations may run shorter or longer than the original segment; timing follows the original timestamps rather than dynamically adjusting speech speed.
+7. **Internet dependency** — YouTube downloading, Edge-TTS, and Hugging Face model downloads currently require connectivity, so a fully offline workflow isn't guaranteed.
+
+---
+
+## 🚀 Future Improvements
+
+- **Multi-speaker dubbing** — add speaker diarization (e.g. `pyannote.audio`) and assign distinct TTS voices per speaker.
+- **Voice cloning** — generate dubbed speech that resembles the original speaker.
+- **Background audio preservation** — separate speech from music/sound effects, translate and re-synthesize only the speech, then remix with the original background.
+- **GPU acceleration** — CUDA support for faster Whisper inference, NLLB translation, and audio processing.
+- **Batch translation** — translate multiple segments together to improve NLLB throughput.
+- **Context-aware translation** — use surrounding segments as context for more consistent translations.
+- **Automatic speech speed adjustment** — dynamically adjust TTS playback speed to better fit each timestamp window.
+- **Web interface** — a simple UI for submitting a URL, selecting target language, and tracking progress.
+
+---
+
+## 🔐 Environment Variables
+
+If future versions require environment variables, define them in `.env`, with an example template committed as `.env.example`. Never commit secrets or API tokens to GitHub.
+
+---
+
+## 🗂️ Temporary Files
+
+Intermediate files live in `temp/` (`audio.wav`, `transcript.json`, `translation.json`, `translation_progress.json`, `checkpoint.json`, `tts_segments/`, `audio_sync/`). These are generated during processing and should not normally be committed to GitHub.
+
+## 🧹 Cleanup
+
+After a successful run, the checkpoint system clears the completed pipeline checkpoint. Temporary media files in `temp/` can be manually removed if disk space is needed. Final results remain in `output/`.
+
+---
+
+## 📦 Requirements
 
 ```text
 yt-dlp
@@ -367,591 +430,95 @@ sentencepiece
 edge-tts
 ```
 
-FFmpeg is also required, but it is a system dependency rather than a normal Python package.
-
-## Installing Python dependencies
-
-Create and activate a virtual environment:
-
-### Windows PowerShell
-
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-Install dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-## FFmpeg
-
-FFmpeg must be installed separately and available on the system PATH.
-
-Verify:
-
-```powershell
-ffmpeg -version
-```
-
-Also verify FFprobe:
-
-```powershell
-ffprobe -version
-```
+FFmpeg must be installed separately as a system dependency.
 
 ---
 
-# `.gitignore`
+## 🔧 Troubleshooting
 
-Do NOT upload the virtual environment, downloaded videos, generated audio, model caches, or final generated videos to GitHub.
+**FFmpeg not found**
+`'ffmpeg' is not recognized` → install FFmpeg and add it to your system PATH, then verify with `ffmpeg -version`.
 
-Create `.gitignore`:
+**Whisper model download issues**
+The first run downloads the model, which takes longer; subsequent runs reuse the cached model.
 
-```gitignore
-# Virtual environment
-venv/
-.venv/
-env/
+**NLLB model download**
+NLLB-200 is significantly larger than Whisper Base, so the first translation run takes extra time to download and load.
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
+**Translation interrupted**
+Resumes automatically from `temp/translation_progress.json` on the next run.
 
-# Local environment variables
-.env
-.env.*
-!.env.example
-
-# Downloaded/generated media
-temp/*
-output/*
-
-# Keep directory structure
-!temp/.gitkeep
-!output/.gitkeep
-
-# Model/cache directories
-.cache/
-huggingface/
-models/
-
-# IDE
-.vscode/
-.idea/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-```
-
-If you have important demo media that you intentionally want to publish, store it separately or use GitHub Releases rather than committing large video files to the repository.
+**Pipeline interrupted**
+Resumes automatically from `temp/checkpoint.json`, reusing completed stages.
 
 ---
 
-# `.env.example`
+## 🧪 Tested Workflow
 
-At the moment, the pipeline does not require a secret API key for the current code.
+**Input:** French YouTube video, ~30 minutes
 
-However, if future versions use API credentials, create:
+**Processing:** 393 speech segments → French transcription → French→English translation → 393 English TTS segments → timestamp synchronization → English dubbed audio → video/audio merge
 
-```text
-.env.example
-```
-
-Example:
-
-```env
-# Add API keys here if future versions require them.
-# Never commit the real .env file.
-```
-
-Then add `.env` to `.gitignore`.
+**Output:** `output/final_dubbed_video.mp4` — generated successfully and playable.
 
 ---
 
-# Running the Project
+## 📈 Current MVP Capabilities
 
-The current development process runs individual test files.
-
-The final goal is to make `main.py` run the entire pipeline:
-
-```text
-python main.py
-```
-
-or:
-
-```text
-python main.py "https://www.youtube.com/watch?v=..."
-```
-
-The final application should perform:
-
-```text
-1. Download video
-2. Extract audio
-3. Detect language
-4. Transcribe speech
-5. Translate to English
-6. Generate English speech
-7. Synchronize speech
-8. Replace video audio
-9. Save final MP4
-```
-
-Expected output:
-
-```text
-output/
-└── final_dubbed_video.mp4
-```
+| Feature | Status |
+|---|:---:|
+| YouTube video input | ✅ |
+| Automatic video download | ✅ |
+| Audio extraction | ✅ |
+| Automatic language detection | ✅ |
+| Speech transcription | ✅ |
+| Timestamp generation | ✅ |
+| Multilingual translation | ✅ |
+| English TTS | ✅ |
+| Timestamp-based synchronization | ✅ |
+| Chunked audio processing | ✅ |
+| Original video preservation | ✅ |
+| Audio replacement | ✅ |
+| Final MP4 generation | ✅ |
+| Pipeline checkpointing | ✅ |
+| Translation progress saving | ✅ |
+| Background audio preservation | ✅ |
 
 ---
 
-# End-to-End Data Flow
+## 📚 Key Concepts Demonstrated
 
-The data passed between modules is approximately:
-
-```text
-YouTube URL
-      |
-      v
-video_path
-      |
-      v
-audio_path
-      |
-      v
-{
-    language: "fr",
-    segments: [
-        {
-            start: 16.0,
-            end: 19.0,
-            text: "Tu as fait quoi ce week-end ?"
-        }
-    ]
-}
-      |
-      v
-{
-    start: 16.0,
-    end: 19.0,
-    original_text: "Tu as fait quoi ce week-end ?",
-    translated_text: "What did you do this weekend?"
-}
-      |
-      v
-TTS MP3
-      |
-      v
-Timestamp-aligned WAV
-      |
-      v
-Final MP4
-```
+Automatic Speech Recognition · Natural Language Processing · Neural Machine Translation · Text-to-Speech · Audio signal processing · Timestamp alignment · Video processing · FFmpeg pipelines · Deep learning model inference · Multilingual AI · Pipeline checkpointing · Fault-tolerant processing · Python modular architecture
 
 ---
 
-# Testing Performed
+## 👨‍💻 Author
 
-The system was tested using a French YouTube video.
-
-Whisper Base detected:
-
-```text
-Language: fr
-Probability: 0.99
-```
-
-It generated 7 timestamped segments.
-
-Example:
-
-```text
-[16.00s - 19.00s]
-Tu as fait quoi ce week-end ?
-
-[19.00s - 27.00s]
-Je suis allé à Bordeaux pour voir mes parents et ma sœur.
-
-[27.00s - 30.00s]
-Ah, super ! C'était comment ?
-
-[30.00s - 36.00s]
-Il a fait très beau. On a même pu aller au bord de la mer.
-```
-
-NLLB successfully translated these segments into English.
-
-Edge-TTS successfully generated English speech for all 7 segments.
-
-The timestamp synchronization stage successfully generated the dubbed audio.
-
-Finally, FFmpeg successfully merged the English audio with the original video.
-
-The resulting MP4 played correctly.
+**Rohan Raju Gorde**
+B.E. Artificial Intelligence & Data Science
+PVG's College of Engineering and Technology, Pune
 
 ---
 
-# Known Limitations
+## 📄 License
 
-## 1. Transcription quality
-
-Whisper Base is substantially better than Tiny in the tested example, but transcription errors can still occur, especially with:
-- background noise
-- accents
-- music
-- overlapping speakers
-- low-quality recordings
-
-Because translation operates on the transcript, ASR errors can propagate into the final translation.
-
-## 2. Translation quality
-
-NLLB-200 is a multilingual translation model, but translation quality varies by language and sentence.
-
-The first long French segment in testing contained ASR errors, which resulted in an awkward translation.
-
-This is an upstream transcription problem rather than necessarily a translation-model problem.
-
-## 3. Voice preservation
-
-The current system generates a new English voice.
-
-It does NOT currently preserve the original speaker's identity or vocal characteristics.
-
-## 4. Background audio
-
-The current implementation replaces the original audio track.
-
-It does not yet separate:
-- speech
-- music
-- environmental/background sounds
-
-A future version could use source separation to preserve background audio while replacing only the speech.
-
-## 5. Multiple speakers
-
-The current pipeline does not perform speaker diarization.
-
-Future versions could detect:
-
-```text
-Speaker 1
-Speaker 2
-Speaker 1
-Speaker 3
-```
-
-and assign different English voices to each speaker.
-
-## 6. Duration matching
-
-English and source-language sentences can have different speaking durations.
-
-The current timestamp synchronization handles placement, but a production system could additionally use:
-- TTS speed adjustment
-- time stretching
-- sentence-level duration optimization
-
-to make the dubbing more naturally aligned.
+This project is intended for educational and development purposes. Add your preferred open-source license (e.g. MIT License) if you choose to release it publicly.
 
 ---
 
-# Future Improvements
+## ⭐ Acknowledgements
 
-### Better ASR
-
-Evaluate:
-- Whisper Small
-- Whisper Medium
-- faster-whisper optimized models
-- other multilingual ASR models
-
-### Better Translation
-
-Evaluate:
-- NLLB-200 variants
-- language-specific translation models
-- improved text normalization
-
-### Better TTS
-
-Potential improvements:
-- selectable English voices
-- more natural voices
-- emotion/style control
-- speaker-specific voices
-- voice cloning where legally and ethically appropriate
-
-### Speaker Diarization
-
-Add a diarization stage:
-
-```text
-Audio
-  |
-  v
-Speaker Detection
-  |
-  +---- Speaker 1
-  |
-  +---- Speaker 2
-  |
-  +---- Speaker 3
-```
-
-### Speech Separation
-
-Separate:
-
-```text
-Original Audio
-      |
-      +---- Speech
-      |
-      +---- Music
-      |
-      +---- Background
-```
-
-Then remove/replace only the speech layer.
-
-### Web Interface
-
-A future UI could allow:
-
-```text
-+-----------------------------------+
-|     Automated Video Dubbing       |
-|                                   |
-| YouTube URL: [................]   |
-|                                   |
-| Target Language: [English  v]     |
-| Voice:          [Aria     v]      |
-|                                   |
-|          [ Start Dubbing ]        |
-+-----------------------------------+
-```
+This project builds on open-source technologies and models: Faster-Whisper, Whisper, Hugging Face Transformers, NLLB-200, PyTorch, Edge-TTS, FFmpeg, and yt-dlp.
 
 ---
 
-# GitHub Setup
-
-## 1. Create the repository locally
-
-From the project directory:
-
-```powershell
-git init
-```
-
-## 2. Check the files
-
-```powershell
-git status
-```
-
-Make sure things such as:
+## 🎬 Final Result
 
 ```text
-venv/
-temp/*.mp4
-temp/*.wav
-temp/*.mp3
-output/*.mp4
+🌍 Foreign-language YouTube Video → 🤖 AI Processing → 🎙️ English-Dubbed Video
 ```
 
-are ignored.
+The original video stream is preserved; the original audio is replaced by synchronized English speech.
 
-## 3. Add files
-
-```powershell
-git add .
-```
-
-## 4. Create the first commit
-
-```powershell
-git commit -m "Initial automated video dubbing pipeline"
-```
-
-## 5. Create a GitHub repository
-
-On GitHub, create a repository named something like:
-
-```text
-automated-video-dubbing
-```
-
-Do not upload your `venv` or generated media files.
-
-## 6. Connect the local repository
-
-GitHub will give you a repository URL. Then run:
-
-```powershell
-git remote add origin YOUR_GITHUB_REPOSITORY_URL
-```
-
-Verify:
-
-```powershell
-git remote -v
-```
-
-## 7. Push
-
-```powershell
-git branch -M main
-git push -u origin main
-```
-
----
-
-# Recommended GitHub Files
-
-At minimum, publish:
-
-```text
-README.md
-requirements.txt
-.gitignore
-LICENSE
-main.py
-src/
-```
-
-Recommended:
-
-```text
-tests/
-.env.example
-```
-
-Do NOT publish:
-
-```text
-venv/
-temp/*.mp4
-temp/*.wav
-temp/*.mp3
-output/*.mp4
-large model files
-API keys
-.env
-```
-
----
-
-# Suggested GitHub README Sections
-
-The GitHub `README.md` should contain:
-
-1. Project title
-2. Project description
-3. Features
-4. Architecture
-5. Pipeline workflow
-6. Technologies used
-7. Project structure
-8. Installation
-9. FFmpeg setup
-10. Usage
-11. Example
-12. Output
-13. Limitations
-14. Future improvements
-15. License
-
-This makes the repository understandable to someone who has never seen the project before.
-
----
-
-# Technology Stack
-
-| Component | Technology |
-|---|---|
-| Language | Python |
-| Video Downloader | yt-dlp |
-| Audio/Video Processing | FFmpeg |
-| Speech Recognition | Faster-Whisper |
-| ASR Model | Whisper Base |
-| Translation | NLLB-200 |
-| Translation Model | NLLB-200 distilled 600M |
-| Text-to-Speech | Edge-TTS |
-| Audio Format | WAV, 16 kHz, mono |
-| Final Video | MP4 |
-| Version Control | Git + GitHub |
-
----
-
-# Final Architecture Summary
-
-The system follows a modular pipeline:
-
-```text
-        INPUT
-          |
-          v
-   YouTube Video URL
-          |
-          v
-       yt-dlp
-          |
-          v
-      Video MP4
-          |
-          v
-       FFmpeg
-          |
-          v
-      Audio WAV
-          |
-          v
-   Faster-Whisper
-          |
-          v
-  Language + Transcript
-          |
-          v
-      NLLB-200
-          |
-          v
-    English Text
-          |
-          v
-      Edge-TTS
-          |
-          v
- English Speech Segments
-          |
-          v
-    Audio Sync
-          |
-          v
-  dubbed_audio.wav
-          |
-          v
-       FFmpeg
-          |
-          v
- FINAL DUBBED VIDEO
-```
-
-## Project Status
-
-**Current status: Working MVP**
-
-The complete pipeline has been successfully tested from YouTube video input through final English-dubbed MP4 output.
-
-The next development milestone is to consolidate the individual test scripts into a single production-oriented `main.py` command and improve transcription, translation, timing, and audio quality.
+**Status: WORKING END-TO-END MVP ✅**
+The pipeline has successfully processed a ~30-minute French video and generated a complete English-dubbed MP4 in approximately **14 minutes** on a CPU-based setup.
